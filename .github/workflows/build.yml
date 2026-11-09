@@ -1,0 +1,27 @@
+name: Build AY Disk
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish Relay
+        run: dotnet publish src/AyDisk.Relay -c Release -o publish/Relay
+      - name: Publish Host (single exe)
+        run: dotnet publish src/AyDisk.Host -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish/Host
+      - name: Publish Viewer (single exe)
+        run: dotnet publish src/AyDisk.Viewer -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish/Viewer
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AY-Disk
+          path: publish/
