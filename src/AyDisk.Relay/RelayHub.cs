@@ -23,6 +23,8 @@ public class RelayHub : Hub
     // active sessions (one viewer per host)
     private static readonly ConcurrentDictionary<string, string> HostToViewer = new();
     private static readonly ConcurrentDictionary<string, string> ViewerToHost = new();
+    // Keep session admission/removal atomic across concurrent SignalR calls.
+    private static readonly object SessionSync = new();
     // brute-force protection: hostId -> (failures, lockedUntil)
     private static readonly ConcurrentDictionary<string, (int Fails, DateTime LockedUntil)> Failures = new();
 
@@ -47,26 +49,47 @@ public class RelayHub : Hub
         return id;
     }
 
-    public async Task RespondToSession(string viewerConnectionId, bool accepted)
+    public async Task<bool> RespondToSession(string viewerConnectionId, bool accepted)
     {
-        // Only the host that was asked can answer
-        if (!Pending.TryRemove(viewerConnectionId, out var hostConn) || hostConn != Context.ConnectionId)
-            return;
-
-        if (!accepted)
+        bool started = false;
+        lock (SessionSync)
         {
-            await Clients.Client(viewerConnectionId).SendAsync("SessionRejected", "The remote user declined the connection.");
-            return;
+            // An unrelated client must never consume another host's pending request.
+            if (!Pending.TryGetValue(viewerConnectionId, out var hostConn) ||
+                hostConn != Context.ConnectionId)
+                return false;
+
+            Pending.TryRemove(viewerConnectionId, out _);
+            if (accepted && HostConnToId.ContainsKey(hostConn) &&
+                !HostToViewer.ContainsKey(hostConn) &&
+                !ViewerToHost.ContainsKey(viewerConnectionId))
+            {
+                HostToViewer[hostConn] = viewerConnectionId;
+                ViewerToHost[viewerConnectionId] = hostConn;
+                started = true;
+            }
         }
 
-        HostToViewer[hostConn] = viewerConnectionId;
-        ViewerToHost[viewerConnectionId] = hostConn;
+        if (!started)
+        {
+            await Clients.Client(viewerConnectionId).SendAsync("SessionRejected",
+                accepted ? "This session is no longer available." : "The remote user declined the connection.");
+            return false;
+        }
+
         await Clients.Client(viewerConnectionId).SendAsync("SessionAccepted");
-        _log.LogInformation("Session started host={Host} viewer={Viewer}", hostConn, viewerConnectionId);
+        _log.LogInformation("Session started host={Host} viewer={Viewer}",
+            Context.ConnectionId, viewerConnectionId);
+        return true;
     }
 
     public async Task SendFrame(byte[] jpeg, int width, int height)
     {
+        // Bound untrusted frame metadata and payload before relaying.
+        if (jpeg == null || jpeg.Length == 0 || jpeg.Length > 6 * 1024 * 1024 ||
+            width < 1 || height < 1 || width > 16384 || height > 16384)
+            throw new HubException("Invalid frame.");
+
         if (HostToViewer.TryGetValue(Context.ConnectionId, out var viewer))
             await Clients.Client(viewer).SendAsync("Frame", jpeg, width, height);
     }
@@ -91,11 +114,18 @@ public class RelayHub : Hub
         }
         Failures.TryRemove(hostId, out _);
 
-        if (HostToViewer.ContainsKey(host.ConnectionId))
-            return "Host is already in a session.";
+        lock (SessionSync)
+        {
+            if (!HostConnToId.ContainsKey(host.ConnectionId) ||
+                HostToViewer.ContainsKey(host.ConnectionId) ||
+                Pending.ContainsKey(Context.ConnectionId) ||
+                Pending.Values.Contains(host.ConnectionId))
+                return "Host is busy or request already pending.";
 
-        Pending[Context.ConnectionId] = host.ConnectionId;
-        await Clients.Client(host.ConnectionId).SendAsync("SessionRequested", Context.ConnectionId, viewerName);
+            Pending[Context.ConnectionId] = host.ConnectionId;
+        }
+        await Clients.Client(host.ConnectionId).SendAsync("SessionRequested",
+            Context.ConnectionId, (viewerName ?? "Technician")[..Math.Min((viewerName ?? "Technician").Length, 80)]);
         return "PENDING";
     }
 
@@ -113,26 +143,48 @@ public class RelayHub : Hub
     {
         var conn = Context.ConnectionId;
         await EndSessionFor(conn);
-        Pending.TryRemove(conn, out _);
 
-        if (HostConnToId.TryRemove(conn, out var id) &&
-            Hosts.TryGetValue(id, out var info) && info.ConnectionId == conn)
-            Hosts.TryRemove(id, out _);
+        List<string> cancelled = new();
+        lock (SessionSync)
+        {
+            Pending.TryRemove(conn, out _);
+            foreach (var pending in Pending.Where(x => x.Value == conn).ToArray())
+            {
+                if (Pending.TryRemove(pending.Key, out _))
+                    cancelled.Add(pending.Key);
+            }
+
+            if (HostConnToId.TryRemove(conn, out var id) &&
+                Hosts.TryGetValue(id, out var info) && info.ConnectionId == conn)
+                Hosts.TryRemove(id, out _);
+        }
+        foreach (var viewer in cancelled)
+            await Clients.Client(viewer).SendAsync("SessionRejected", "Host disconnected.");
 
         await base.OnDisconnectedAsync(exception);
     }
 
     private async Task EndSessionFor(string conn)
     {
-        if (HostToViewer.TryRemove(conn, out var viewer))
+        string? peer = null;
+        lock (SessionSync)
         {
-            ViewerToHost.TryRemove(viewer, out _);
-            await Clients.Client(viewer).SendAsync("SessionEnded");
+            Pending.TryRemove(conn, out _);
+            if (HostToViewer.TryRemove(conn, out var viewer))
+            {
+                ViewerToHost.TryRemove(viewer, out _);
+                peer = viewer;
+            }
+            else if (ViewerToHost.TryRemove(conn, out var host))
+            {
+                HostToViewer.TryRemove(host, out _);
+                peer = host;
+            }
         }
-        else if (ViewerToHost.TryRemove(conn, out var host))
+        if (peer != null)
         {
-            HostToViewer.TryRemove(host, out _);
-            await Clients.Client(host).SendAsync("SessionEnded");
+            await Clients.Client(peer).SendAsync("SessionEnded");
+            _log.LogInformation("Session ended connection={Connection}", conn);
         }
     }
 

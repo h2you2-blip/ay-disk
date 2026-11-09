@@ -89,7 +89,18 @@ public class MainForm : Form
 
             _conn.On("SessionEnded", () => BeginInvoke(() => _ = EndSessionAsync(notifyRelay: false)));
 
-            _conn.Reconnecting += _ => { BeginInvoke(() => SetStatus("Reconnecting...")); return Task.CompletedTask; };
+            _conn.Reconnecting += _ =>
+            {
+                BeginInvoke(() =>
+                {
+                    StopStreaming();
+                    _activeViewer = null;
+                    _btnEnd.Enabled = false;
+                    _lblStatus.ForeColor = Color.DimGray;
+                    SetStatus("Reconnecting - session ended");
+                });
+                return Task.CompletedTask;
+            };
             _conn.Reconnected += async _ => await RegisterAsync();
             _conn.Closed += _ => { BeginInvoke(() => { SetStatus("Offline"); _btnConnect.Enabled = true; }); return Task.CompletedTask; };
 
@@ -141,8 +152,8 @@ public class MainForm : Form
             "AY Disk - Incoming connection", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
 
         bool accepted = answer == DialogResult.Yes;
-        await _conn.InvokeAsync("RespondToSession", viewerConn, accepted);
-        if (!accepted) return;
+        bool sessionStarted = await _conn.InvokeAsync<bool>("RespondToSession", viewerConn, accepted);
+        if (!sessionStarted) return;
 
         _activeViewer = viewerConn;
         _btnEnd.Enabled = true;
