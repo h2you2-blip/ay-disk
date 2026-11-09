@@ -23,6 +23,10 @@ Viewer <-- JPEG ---- Relay <-- JPEG ---- Host
 - Windows 10/11 for the Host and Viewer. The Relay can run on Windows or Linux.
 - A network connection to the same relay URL for Host and Viewer.
 
+## Start here
+
+Follow the [Quick Start guide](docs/QUICKSTART.md) to download the tested executables and try AY Disk locally before using a server.
+
 ## Run locally
 
 Open `AyDisk.sln` in Visual Studio, configure multiple startup projects (Relay, Host, Viewer) and press **F5**.
@@ -48,9 +52,10 @@ Use a publicly reachable or VPN-accessible Relay and configure both apps with th
 
 ## Build and download
 
-A push to `main` triggers `.github/workflows/build.yml`, which publishes:
+A push to `main` triggers `.github/workflows/build.yml`, which smoke-tests the Relay startup and publishes:
 
-- `Relay/` — relay server files
+- `Relay-Windows/` — standalone Windows x64 relay executable
+- `Relay-Linux/` — standalone Linux x64 relay executable
 - `Host/` — Windows x64 Host single-file executable
 - `Viewer/` — Windows x64 Viewer single-file executable
 

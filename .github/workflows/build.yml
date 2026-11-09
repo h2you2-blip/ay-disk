@@ -14,11 +14,43 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Publish Relay
-        run: dotnet publish src/AyDisk.Relay -c Release -o publish/Relay
-      - name: Publish Host (single exe)
+      - name: Publish Relay (Windows x64, standalone)
+        run: dotnet publish src/AyDisk.Relay -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish/Relay-Windows
+
+      - name: Smoke test Relay startup
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "publish/Relay-Windows/AyDisk.Relay.exe").Path
+          $relay = Start-Process -FilePath $exe -ArgumentList @("--urls", "http://127.0.0.1:5037") -PassThru -NoNewWindow
+          $healthy = $false
+          try {
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              Start-Sleep -Milliseconds 750
+              if ($relay.HasExited) { throw "Relay exited before health check completed." }
+              try {
+                $response = Invoke-WebRequest -Uri "http://127.0.0.1:5037/" -TimeoutSec 3
+                if ($response.StatusCode -eq 200 -and $response.Content -match "AyDisk relay is running") {
+                  $healthy = $true
+                  break
+                }
+              } catch {
+                # Retry while the process starts.
+              }
+            }
+            if (-not $healthy) { throw "Relay did not pass startup health check." }
+            Write-Host "Relay startup health check passed."
+          }
+          finally {
+            if (-not $relay.HasExited) { Stop-Process -Id $relay.Id -Force }
+          }
+
+      - name: Publish Relay (Linux x64, standalone)
+        run: dotnet publish src/AyDisk.Relay -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o publish/Relay-Linux
+
+      - name: Publish Host (Windows x64, single exe)
         run: dotnet publish src/AyDisk.Host -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish/Host
-      - name: Publish Viewer (single exe)
+
+      - name: Publish Viewer (Windows x64, single exe)
         run: dotnet publish src/AyDisk.Viewer -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish/Viewer
 
       - uses: actions/upload-artifact@v4
