@@ -31,10 +31,10 @@ public class ViewerForm : Form
 
         try { _txtRelay.Text = File.ReadAllText(RelayFile).Trim(); } catch { _txtRelay.Text = "http://localhost:5000"; }
 
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 82, Padding = new Padding(6), WrapContents = false };
-        var connectionRow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, WrapContents = false };
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 88, Padding = new Padding(6), FlowDirection = FlowDirection.TopDown, WrapContents = false };
+        var connectionRow = new FlowLayoutPanel { Width = 1100, Height = 40, WrapContents = false };
         connectionRow.Controls.AddRange(new Control[] { _txtRelay, _txtId, _txtPwd, _btnConnect, _btnDisconnect });
-        var technicianRow = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 38, WrapContents = false };
+        var technicianRow = new FlowLayoutPanel { Width = 1100, Height = 38, WrapContents = false };
         technicianRow.Controls.AddRange(new Control[] { _txtTechId, _txtTechToken, _lblStatus });
         bar.Controls.Add(connectionRow);
         bar.Controls.Add(technicianRow);
