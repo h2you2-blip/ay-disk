@@ -33,6 +33,27 @@ Run the Relay on a Windows computer that both PCs can reach. On that computer, o
 
 **Security:** This LAN example uses unencrypted HTTP and is for testing on a trusted, isolated network only. Do not expose TCP 5000 to the public internet, do not port-forward it, and do not use it on an untrusted Wi-Fi network. To test over the internet, first configure HTTPS/WSS via a reverse proxy with a valid certificate, and harden relay authentication and access controls.
 
+## Technician access tokens (staging only)
+
+To require a named technician identity for starting a support session, set the Relay environment variable
+`AYDISK_TECHNICIANS_JSON` to a JSON object mapping each technician name to a **unique, random token of at least 32 characters**.
+Generate independent tokens using a cryptographically secure password generator, store the mapping privately on the server, and never commit it to the repository or paste it into issue logs. For example, in an ephemeral PowerShell session (replace the example names):
+
+```powershell
+$env:AYDISK_TECHNICIANS_JSON = ConvertTo-Json @{
+  tech1 = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+  tech2 = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+} -Compress
+$env:AYDISK_TECHNICIANS_JSON
+```
+
+Copy each generated token to its intended technician using a private channel, then start the Relay **in the same shell**.
+In AY Disk Viewer, enter **Technician** and **Access token** as well as the Host ID and temporary Host password.
+The Access token is intentionally not saved by Viewer. The Relay checks these credentials before notifying the Host, which must still explicitly approve the session.
+
+If the variable is unset, the local-development demo remains usable without technician credentials; this is **not an acceptable internet-facing mode**.
+This is a basic staging gate, not a complete SSO, encrypted end-to-end session, anti-brute-force technician rate limiter or production identity system. Use HTTPS for any network transmission of tokens; never use plain HTTP outside a trusted isolated test setup.
+
 ## Linux relay for a future server test
 
 The artifact also contains `Relay-Linux/AyDisk.Relay` — a self-contained executable for Linux x64. On a Linux machine:

@@ -68,11 +68,15 @@ In GitHub, go to **Actions → Build AY Disk → latest successful run → Artif
 - Visible red **CONTROLLED by ...** state and an **End session** action.
 - One active Viewer per Host, and a basic five-failure / five-minute lockout per Host ID.
 
+## Technician access (staging)
+
+The Relay can optionally enforce named, per-technician access tokens via `AYDISK_TECHNICIANS_JSON`. See [Quick Start](docs/QUICKSTART.md#technician-access-tokens-staging-only). A Host ID and temporary password, plus explicit Host-side approval, remain required. The local demo has no technician token requirement unless explicitly configured.
+
 ## Known limitations
 
 - Captures only the primary monitor; full JPEG frames can use substantial bandwidth.
 - Cannot interact with UAC secure desktop, lock screen or Ctrl+Alt+Del.
-- No end-to-end encryption, technician accounts, persistent session audit trail, enterprise management, file transfer or unattended access.
+- No end-to-end encryption, production-grade technician accounts/SSO, persistent session audit trail, enterprise management, file transfer or unattended access.
 - This version is intended for **attended, explicitly authorized support**, not covert access.
 
 ## Roadmap

@@ -29,7 +29,12 @@ public class RelayHub : Hub
     private static readonly ConcurrentDictionary<string, (int Fails, DateTime LockedUntil)> Failures = new();
 
     private readonly ILogger<RelayHub> _log;
-    public RelayHub(ILogger<RelayHub> log) => _log = log;
+    private readonly TechnicianRegistry _technicians;
+    public RelayHub(ILogger<RelayHub> log, TechnicianRegistry technicians)
+    {
+        _log = log;
+        _technicians = technicians;
+    }
 
     // ---------------- HOST ----------------
 
@@ -96,9 +101,15 @@ public class RelayHub : Hub
 
     // ---------------- VIEWER ----------------
 
-    public async Task<string> RequestSession(string hostId, string password, string viewerName)
+    public async Task<string> RequestSession(string hostId, string password, string viewerName, string technicianId, string technicianToken)
     {
         hostId = (hostId ?? "").Replace(" ", "");
+
+        if (!_technicians.IsAuthorized(technicianId, technicianToken))
+        {
+            _log.LogWarning("Rejected unauthenticated session request connection={Connection}", Context.ConnectionId);
+            return "Technician sign-in failed.";
+        }
 
         if (Failures.TryGetValue(hostId, out var f) && f.LockedUntil > DateTime.UtcNow)
             return "Too many wrong passwords. Try again in a few minutes.";
@@ -124,8 +135,13 @@ public class RelayHub : Hub
 
             Pending[Context.ConnectionId] = host.ConnectionId;
         }
+        var displayName = _technicians.IsEnabled
+            ? technicianId.Trim()
+            : (viewerName ?? "Technician");
+        displayName = displayName[..Math.Min(displayName.Length, 80)];
+        _log.LogInformation("Technician {Technician} requested host {Host}", displayName, hostId);
         await Clients.Client(host.ConnectionId).SendAsync("SessionRequested",
-            Context.ConnectionId, (viewerName ?? "Technician")[..Math.Min((viewerName ?? "Technician").Length, 80)]);
+            Context.ConnectionId, displayName);
         return "PENDING";
     }
 

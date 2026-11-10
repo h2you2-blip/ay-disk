@@ -11,7 +11,9 @@ public class ViewerForm : Form
 
     private readonly TextBox _txtRelay = new() { Width = 220, PlaceholderText = "http://relay:5000" };
     private readonly TextBox _txtId = new() { Width = 120, PlaceholderText = "Remote ID" };
-    private readonly TextBox _txtPwd = new() { Width = 110, PlaceholderText = "Password", UseSystemPasswordChar = true };
+    private readonly TextBox _txtPwd = new() { Width = 110, PlaceholderText = "Host password", UseSystemPasswordChar = true };
+    private readonly TextBox _txtTechId = new() { Width = 110, PlaceholderText = "Technician" };
+    private readonly TextBox _txtTechToken = new() { Width = 150, PlaceholderText = "Access token", UseSystemPasswordChar = true };
     private readonly Button _btnConnect = new() { Text = "Connect", AutoSize = true };
     private readonly Button _btnDisconnect = new() { Text = "Disconnect", AutoSize = true, Enabled = false };
     private readonly Label _lblStatus = new() { AutoSize = true, Padding = new Padding(0, 6, 0, 0), Text = "Ready" };
@@ -29,8 +31,13 @@ public class ViewerForm : Form
 
         try { _txtRelay.Text = File.ReadAllText(RelayFile).Trim(); } catch { _txtRelay.Text = "http://localhost:5000"; }
 
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 38, Padding = new Padding(6), WrapContents = false };
-        bar.Controls.AddRange(new Control[] { _txtRelay, _txtId, _txtPwd, _btnConnect, _btnDisconnect, _lblStatus });
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 82, Padding = new Padding(6), WrapContents = false };
+        var connectionRow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, WrapContents = false };
+        connectionRow.Controls.AddRange(new Control[] { _txtRelay, _txtId, _txtPwd, _btnConnect, _btnDisconnect });
+        var technicianRow = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 38, WrapContents = false };
+        technicianRow.Controls.AddRange(new Control[] { _txtTechId, _txtTechToken, _lblStatus });
+        bar.Controls.Add(connectionRow);
+        bar.Controls.Add(technicianRow);
         Controls.Add(_screen);
         Controls.Add(bar);
 
@@ -108,7 +115,9 @@ public class ViewerForm : Form
             await _conn.StartAsync();
 
             var result = await _conn.InvokeAsync<string>("RequestSession",
-                _txtId.Text.Replace(" ", ""), _txtPwd.Text, $"{Environment.UserName}@{Environment.MachineName}");
+                _txtId.Text.Replace(" ", ""), _txtPwd.Text,
+                $"{Environment.UserName}@{Environment.MachineName}",
+                _txtTechId.Text.Trim(), _txtTechToken.Text);
 
             if (result == "PENDING")
             {

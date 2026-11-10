@@ -8,6 +8,9 @@ builder.Services.AddSignalR(o =>
     o.EnableDetailedErrors = builder.Environment.IsDevelopment();
 }).AddMessagePackProtocol();
 
+builder.Services.AddSingleton(new TechnicianRegistry(
+    Environment.GetEnvironmentVariable("AYDISK_TECHNICIANS_JSON")));
+
 var app = builder.Build();
 
 app.MapGet("/", () => "AyDisk relay is running");
